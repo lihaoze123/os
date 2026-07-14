@@ -10,4 +10,6 @@ test = false
 bench = false
 
 [dependencies]
+log = "0.4.33"
+owo-colors = { version = "4", default-features = false }
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
