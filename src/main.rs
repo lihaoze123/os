@@ -3,6 +3,8 @@
 
 use core::arch::global_asm;
 
+use crate::sbi::shutdown;
+
 mod lang_items;
 mod logging;
 mod sbi;
@@ -22,8 +24,9 @@ macro_rules! linker_symbol_addr {
 pub fn rust_main() -> ! {
     clear_bss();
     logging::init();
-    log::info!("Hello World!");
-    panic!("Shutdown machine!");
+    log::info!("Hello from system!");
+    log::info!("Shutdown system!");
+    shutdown(false);
 }
 
 fn clear_bss() {
