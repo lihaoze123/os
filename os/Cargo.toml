@@ -10,6 +10,8 @@ test = false
 bench = false
 
 [dependencies]
+lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 log = "0.4.33"
 owo-colors = { version = "4", default-features = false }
+riscv = { version = "0.16.1", features = ["s-mode"] }
 sbi-rt = { version = "0.0.2", features = ["legacy"] }

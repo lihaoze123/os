@@ -1,32 +1,37 @@
 #![no_main]
 #![no_std]
 
-use core::arch::global_asm;
-
-use crate::sbi::shutdown;
-
-mod lang_items;
-mod logging;
-mod sbi;
-
-#[macro_use]
-mod console;
-
-global_asm!(include_str!("entry.asm"));
-
 macro_rules! linker_symbol_addr {
     ($symbol:path) => {
         ($symbol as *const ()).addr()
     };
 }
 
+use core::arch::global_asm;
+
+mod batch;
+mod lang_items;
+mod logging;
+mod sbi;
+mod sync;
+mod syscall;
+mod trap;
+
+#[macro_use]
+mod console;
+
+global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("link_app.S"));
+
 #[unsafe(no_mangle)]
 pub fn rust_main() -> ! {
     clear_bss();
     logging::init();
     log::info!("Hello from system!");
-    log::info!("Shutdown system!");
-    shutdown(false);
+
+    trap::init();
+    batch::init();
+    batch::run_next_app();
 }
 
 fn clear_bss() {
