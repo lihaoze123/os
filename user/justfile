@@ -1,0 +1,52 @@
+target := "riscv64gc-unknown-none-elf"
+mode := "release"
+app_dir := "src/bin"
+target_dir := "target" / target / mode
+
+objcopy := "rust-objcopy"
+objdump := "rust-objdump"
+
+default:
+    @just --list
+
+elf:
+    @cargo build --release
+
+binary: elf
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+
+    for source in "{{ app_dir }}"/*.rs; do
+        app="${source##*/}"
+        elf="{{ target_dir }}/${app%.rs}"
+        {{ objcopy }} --binary-architecture=riscv64 "$elf" --strip-all -O binary "$elf.bin"
+    done
+
+disasm app="": elf
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+
+    app={{ quote(app) }}
+    if [[ -z "$app" ]]; then
+        sources=("{{ app_dir }}"/*.rs)
+        if (( ${#sources[@]} != 1 )); then
+            echo "usage: just disasm <app>" >&2
+            echo "available apps:" >&2
+            printf '  %s\n' "${sources[@]##*/}" | sed 's/\.rs$//' >&2
+            exit 2
+        fi
+        app="${sources[0]##*/}"
+    fi
+
+    app="${app##*/}"
+    elf="{{ target_dir }}/${app%.rs}"
+    if [[ ! -f "$elf" ]]; then
+        echo "error: app '$app' does not produce an ELF at '$elf'" >&2
+        exit 1
+    fi
+
+    {{ objdump }} --arch-name=riscv64 --all-headers --disassemble --demangle "$elf" | less
+
+build: binary
