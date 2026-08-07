@@ -2,6 +2,8 @@ use core::arch::asm;
 
 use crate::{sbi::shutdown, sync::up::UPSafeCell};
 
+include!(concat!(env!("OUT_DIR"), "/app_names.rs"));
+
 pub(super) const MAX_APP_NUM: usize = 16;
 pub(super) const APP_BASE_ADDRESS: usize = 0x80400000;
 pub(super) const APP_SIZE_LIMIT: usize = 0x20000;
@@ -52,6 +54,14 @@ impl AppManager {
 
     pub fn get_current_app(&self) -> usize {
         self.current_app
+    }
+
+    pub fn get_current_task_info(&self) -> (usize, &'static str) {
+        let task_id = self
+            .current_app
+            .checked_sub(1)
+            .expect("no application is currently running");
+        (task_id, APP_NAMES[task_id])
     }
 
     pub fn move_to_next_app(&mut self) {

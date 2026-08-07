@@ -19,6 +19,10 @@ pub fn print_app_info() {
     APP_MANAGER.exclusive_access().print_app_info();
 }
 
+pub fn get_current_task_info() -> (usize, &'static str) {
+    APP_MANAGER.exclusive_access().get_current_task_info()
+}
+
 pub fn run_next_app() -> ! {
     let mut app_manager = APP_MANAGER.exclusive_access();
     let current_app = app_manager.get_current_app();

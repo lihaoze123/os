@@ -1,5 +1,7 @@
+use std::env;
 use std::fs::{File, read_dir};
 use std::io::Write;
+use std::path::PathBuf;
 
 static TARGET_PATH: &str = "../user/target/riscv64gc-unknown-none-elf/release/";
 
@@ -22,6 +24,19 @@ fn main() {
         })
         .collect();
     apps.sort();
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let mut app_names = File::create(out_dir.join("app_names.rs")).unwrap();
+    write!(
+        app_names,
+        "pub(super) const APP_NAMES: [&str; {}] = [",
+        apps.len()
+    )
+    .unwrap();
+    for app in &apps {
+        write!(app_names, "{:?},", app).unwrap();
+    }
+    writeln!(app_names, "];").unwrap();
 
     writeln!(
         f,
