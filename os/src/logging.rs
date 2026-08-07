@@ -44,6 +44,7 @@ pub fn init() {
         Some("INFO") => LevelFilter::Info,
         Some("DEBUG") => LevelFilter::Debug,
         Some("TRACE") => LevelFilter::Trace,
+        Some("OFF") => LevelFilter::Off,
         _ => LevelFilter::Info,
     });
 }
