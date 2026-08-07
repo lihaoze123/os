@@ -8,7 +8,7 @@ use riscv::{
     },
 };
 
-use crate::{batch::run_next_app, syscall::syscall};
+use crate::{syscall::syscall, task::run_next_app};
 
 mod context;
 pub use context::TrapContext;

@@ -9,13 +9,14 @@ macro_rules! linker_symbol_addr {
 
 use core::arch::global_asm;
 
-mod batch;
 mod lang_items;
+mod loader;
 mod logging;
 mod sbi;
 mod stack_trace;
 mod sync;
 mod syscall;
+mod task;
 mod time;
 mod trap;
 
@@ -32,8 +33,8 @@ pub fn rust_main() -> ! {
     log::info!("Hello from system!");
 
     trap::init();
-    batch::init();
-    batch::run_next_app();
+    loader::load_apps();
+    task::run_next_app();
 }
 
 fn clear_bss() {
