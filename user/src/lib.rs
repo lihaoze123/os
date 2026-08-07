@@ -11,6 +11,7 @@ pub mod console;
 
 mod lang_items;
 mod syscall;
+pub mod time;
 
 unsafe extern "Rust" {
     fn main() -> i32;

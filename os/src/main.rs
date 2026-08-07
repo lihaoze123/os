@@ -16,6 +16,7 @@ mod sbi;
 mod stack_trace;
 mod sync;
 mod syscall;
+mod time;
 mod trap;
 
 #[macro_use]

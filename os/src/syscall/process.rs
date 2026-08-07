@@ -1,6 +1,4 @@
-use crate::{
-    batch::{get_current_task_info, run_next_app},
-};
+use crate::batch::{get_current_task_info, run_next_app};
 
 pub fn sys_get_taskinfo() -> isize {
     let (task_id, task_name) = get_current_task_info();
