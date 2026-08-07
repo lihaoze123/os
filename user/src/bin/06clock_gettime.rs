@@ -24,9 +24,9 @@ fn main() -> i32 {
     println!("fib(35) % {} = {}", MOD, fib(35));
     let elapsed = start.elapsed().unwrap().as_micros();
     println!(
-        "elapsed: {}.{} ms",
-        elapsed / 1_000_000,
-        elapsed % 1_000_000
+        "elapsed: {}.{:03} ms",
+        elapsed / 1_000,
+        elapsed % 1_000
     );
     0
 }
