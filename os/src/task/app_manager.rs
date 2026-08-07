@@ -1,6 +1,6 @@
 use crate::sync::up::UPSafeCell;
 
-include!(concat!(env!("OUT_DIR"), "/app_names.rs"));
+include!(env!("OS_APP_NAMES_RS"));
 
 pub(super) const MAX_APP_NUM: usize = 16;
 

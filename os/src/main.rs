@@ -24,7 +24,7 @@ mod trap;
 mod console;
 
 global_asm!(include_str!("entry.asm"));
-global_asm!(include_str!("link_app.S"));
+global_asm!(include_str!(env!("OS_LINK_APP_ASM")));
 
 #[unsafe(no_mangle)]
 pub fn rust_main() -> ! {

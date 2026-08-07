@@ -1,72 +1,116 @@
 use std::env;
-use std::fs::{File, read_dir};
-use std::io::Write;
-use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::fmt::Write as _;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-static TARGET_PATH: &str = "../user/target/riscv64gc-unknown-none-elf/release/";
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x100_0000_01b3;
 
-fn main() {
-    println!("cargo:rerun-if-changed=../user/src/");
-    println!("cargo:rerun-if-changed={}", TARGET_PATH);
+fn update_hash(mut value: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        value = (value ^ u64::from(*byte)).wrapping_mul(FNV_PRIME);
+    }
+    value
+}
 
-    let mut f = File::create("src/link_app.S").unwrap();
-    let mut apps: Vec<_> = read_dir("../user/src/bin")
-        .unwrap()
-        .into_iter()
-        .map(|dir_entry| {
-            dir_entry
-                .unwrap()
-                .path()
-                .file_stem()
-                .unwrap()
+fn app_names(app_dir: &Path) -> Vec<String> {
+    let mut apps: Vec<_> = fs::read_dir(app_dir)
+        .expect("failed to read user application directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .map(|path| {
+            path.file_stem()
+                .expect("application source has no file stem")
                 .to_string_lossy()
                 .into_owned()
         })
         .collect();
     apps.sort();
+    apps
+}
 
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let mut app_names = File::create(out_dir.join("app_names.rs")).unwrap();
-    write!(
-        app_names,
-        "pub(super) const APP_NAMES: [&str; {}] = [",
-        apps.len()
-    )
-    .unwrap();
+fn main() {
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let target = env::var("TARGET").unwrap();
+    let profile = env::var("PROFILE").unwrap();
+    let user_dir = manifest_dir.join("../user");
+    let app_dir = user_dir.join("src/bin");
+    let user_target_dir = user_dir.join("target").join(target).join(profile);
+    let linker_source = manifest_dir.join("src/linker.ld");
+
+    println!("cargo::rerun-if-changed={}", app_dir.display());
+    println!("cargo::rerun-if-changed={}", linker_source.display());
+
+    let linker_script = fs::read(&linker_source).expect("failed to read kernel linker script");
+    let linker_hash = update_hash(FNV_OFFSET, &linker_script);
+    let linker_path = out_dir.join(format!("linker-{linker_hash:016x}.ld"));
+    fs::write(&linker_path, linker_script).expect("failed to write kernel linker script");
+    println!("cargo::rustc-link-arg-bin=os=-T{}", linker_path.display());
+
+    let apps = app_names(&app_dir);
+    let mut binaries = Vec::with_capacity(apps.len());
+    let mut bundle_hash = FNV_OFFSET;
+
     for app in &apps {
-        write!(app_names, "{:?},", app).unwrap();
+        let binary_path = user_target_dir.join(format!("{app}.bin"));
+        println!("cargo::rerun-if-changed={}", binary_path.display());
+        let bytes = fs::read(&binary_path).unwrap_or_else(|error| {
+            panic!(
+                "failed to read user binary '{}': {error}; run `make user` first",
+                binary_path.display()
+            )
+        });
+        bundle_hash = update_hash(bundle_hash, app.as_bytes());
+        bundle_hash = update_hash(bundle_hash, &bytes);
+        binaries.push((app, binary_path));
     }
-    writeln!(app_names, "];").unwrap();
 
-    writeln!(
-        f,
-        r#"    .align 3
-    .section .data
-    .global _num_app
-_num_app:
-    .quad {}
-"#,
+    let mut app_names_rs = format!("pub(super) const APP_NAMES: [&str; {}] = [", apps.len());
+    for app in &apps {
+        write!(app_names_rs, "{app:?},").unwrap();
+    }
+    app_names_rs.push_str("];\n");
+
+    let app_names_path = out_dir.join(format!("app_names-{bundle_hash:016x}.rs"));
+    fs::write(&app_names_path, app_names_rs).expect("failed to write application name table");
+    println!(
+        "cargo::rustc-env=OS_APP_NAMES_RS={}",
+        app_names_path.display()
+    );
+
+    let mut link_app = format!(
+        ".align 3\n.section .data\n.global _num_app\n_num_app:\n    .quad {}\n",
         apps.len()
-    )
-    .unwrap();
-
-    for i in 0..apps.len() {
-        writeln!(f, r#"    .quad app_{}_start"#, i).unwrap();
+    );
+    for index in 0..apps.len() {
+        writeln!(link_app, "    .quad app_{index}_start").unwrap();
     }
-    writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1).unwrap();
+    if let Some(last) = apps.len().checked_sub(1) {
+        writeln!(link_app, "    .quad app_{last}_end").unwrap();
+    }
 
-    for (idx, app) in apps.iter().enumerate() {
-        println!("app_{}: {}", idx, app);
+    for (index, (_, binary_path)) in binaries.iter().enumerate() {
         writeln!(
-            f,
-            r#"    .section .data
-    .global app_{0}_start
-    .global app_{0}_end
-app_{0}_start:
-    .incbin "{2}{1}.bin"
-app_{0}_end:"#,
-            idx, app, TARGET_PATH
+            link_app,
+            r#".section .data
+.global app_{index}_start
+.global app_{index}_end
+app_{index}_start:
+    .incbin "{}"
+app_{index}_end:
+"#,
+            binary_path.display()
         )
         .unwrap();
     }
+
+    let link_app_path = out_dir.join(format!("link_app-{bundle_hash:016x}.S"));
+    fs::write(&link_app_path, link_app).expect("failed to write application assembly table");
+    println!(
+        "cargo::rustc-env=OS_LINK_APP_ASM={}",
+        link_app_path.display()
+    );
 }
