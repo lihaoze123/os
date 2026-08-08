@@ -1,4 +1,4 @@
-use crate::{loader::get_base_i, task::app_manager::MAX_APP_NUM, trap::TrapContext};
+use crate::{loader::get_base_i, task::task_manager::MAX_APP_NUM, trap::TrapContext};
 
 const USER_STACK_SIZE: usize = 4096 * 2;
 const KERNEL_STACK_SIZE: usize = 4096 * 2;

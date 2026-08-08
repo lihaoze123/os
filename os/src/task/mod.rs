@@ -1,32 +1,48 @@
-use crate::sbi::shutdown;
+use crate::task::context::TaskContext;
 
-use self::{app_manager::APP_MANAGER, stack::init_app_cx};
+use self::{stack::init_app_cx, task_manager::TASK_MANAGER};
 
-mod app_manager;
+mod context;
 mod stack;
+mod switch;
+mod task_manager;
 
-pub fn get_current_task_info() -> (usize, &'static str) {
-    APP_MANAGER.exclusive_access().get_current_task_info()
+#[derive(Clone, Copy, PartialEq)]
+pub enum TaskStatus {
+    UnInit,
+    Ready,
+    Running,
+    Exited,
 }
 
-pub fn run_next_app() -> ! {
-    let mut app_manager = APP_MANAGER.exclusive_access();
-    let current_app = match app_manager.get_current_app() {
-        Some(id) => id,
-        None => {
-            log::info!("All applications completed");
-            shutdown(false);
-        }
-    };
-    app_manager.move_to_next_app();
-    drop(app_manager);
+#[derive(Clone, Copy)]
+pub struct TaskControlBlock {
+    pub task_status: TaskStatus,
+    pub task_cx: TaskContext,
+}
 
-    unsafe extern "C" {
-        unsafe fn __restore(cx_addr: usize);
-    }
+pub fn run_first_task() {
+    TASK_MANAGER.run_first_task();
+}
 
-    unsafe {
-        __restore(init_app_cx(current_app));
-    }
-    unreachable!()
+pub fn run_next_task() {
+    TASK_MANAGER.run_next_task();
+}
+
+pub fn suspend_current_and_run_next() {
+    mark_current_suspended();
+    run_next_task();
+}
+
+pub fn exit_current_and_run_next() {
+    mark_current_exited();
+    run_next_task();
+}
+
+fn mark_current_suspended() {
+    TASK_MANAGER.mark_current_suspended();
+}
+
+fn mark_current_exited() {
+    TASK_MANAGER.mark_current_exited();
 }

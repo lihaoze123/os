@@ -53,33 +53,35 @@ fn main() {
     let apps = app_names(&app_dir);
     let mut binaries = Vec::with_capacity(apps.len());
     let mut bundle_hash = FNV_OFFSET;
+    let mut missing_binaries = false;
 
     for app in &apps {
         let binary_path = user_target_dir.join(format!("{app}.bin"));
         println!("cargo::rerun-if-changed={}", binary_path.display());
-        let bytes = fs::read(&binary_path).unwrap_or_else(|error| {
-            panic!(
-                "failed to read user binary '{}': {error}; run `make user` first",
-                binary_path.display()
-            )
-        });
         bundle_hash = update_hash(bundle_hash, app.as_bytes());
-        bundle_hash = update_hash(bundle_hash, &bytes);
+        match fs::read(&binary_path) {
+            Ok(bytes) => bundle_hash = update_hash(bundle_hash, &bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // `cargo check` (and therefore rust-analyzer) does not assemble
+                // the `.incbin` directives below. Keep emitting them so a real
+                // build still reports a missing user image instead of silently
+                // producing an unusable kernel.
+                bundle_hash = update_hash(bundle_hash, binary_path.as_os_str().as_encoded_bytes());
+                missing_binaries = true;
+            }
+            Err(error) => panic!(
+                "failed to read user binary '{}': {error}",
+                binary_path.display()
+            ),
+        }
         binaries.push((app, binary_path));
     }
 
-    let mut app_names_rs = format!("pub(super) const APP_NAMES: [&str; {}] = [", apps.len());
-    for app in &apps {
-        write!(app_names_rs, "{app:?},").unwrap();
+    if missing_binaries {
+        println!(
+            "cargo::warning=user binaries are missing; `cargo check` can continue, but run `make user` before building the kernel"
+        );
     }
-    app_names_rs.push_str("];\n");
-
-    let app_names_path = out_dir.join(format!("app_names-{bundle_hash:016x}.rs"));
-    fs::write(&app_names_path, app_names_rs).expect("failed to write application name table");
-    println!(
-        "cargo::rustc-env=OS_APP_NAMES_RS={}",
-        app_names_path.display()
-    );
 
     let mut link_app = format!(
         ".align 3\n.section .data\n.global _num_app\n_num_app:\n    .quad {}\n",

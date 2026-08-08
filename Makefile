@@ -54,7 +54,7 @@ $(USER_ELFS) &: $(USER_INPUTS) $(USER_APP_MANIFEST)
 $(USER_TARGET_DIR)/%.bin: $(USER_TARGET_DIR)/%
 	@$(OBJCOPY) --binary-architecture=riscv64 $< --strip-all -O binary $@
 
-$(KERNEL_ELF): $(OS_INPUTS) $(USER_BINS) $(USER_APP_MANIFEST)
+$(KERNEL_ELF): FORCE $(OS_INPUTS) $(USER_BINS) $(USER_APP_MANIFEST)
 	@cd os && $(CARGO) build --release
 
 $(KERNEL_BIN): $(KERNEL_ELF)

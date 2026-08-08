@@ -34,7 +34,9 @@ pub fn rust_main() -> ! {
 
     trap::init();
     loader::load_apps();
-    task::run_next_app();
+    task::run_first_task();
+
+    unreachable!()
 }
 
 fn clear_bss() {

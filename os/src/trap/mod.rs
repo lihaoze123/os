@@ -8,7 +8,7 @@ use riscv::{
     },
 };
 
-use crate::{syscall::syscall, task::run_next_app};
+use crate::{sbi::shutdown, syscall::syscall, task::run_next_task};
 
 mod context;
 pub use context::TrapContext;
@@ -48,14 +48,23 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         }
         Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
             log::info!("[kernel] PageFault in application, kernel killed it.");
-            run_next_app();
+            run_next_task();
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::info!("[kernel] IllegalInstruction in application, kernel killed it.");
-            run_next_app();
+            run_next_task();
+        }
+        Trap::Exception(Exception::InstructionFault) => {
+            log::info!("[kernel] InstructionFault in application, kernel killed it.");
+            run_next_task();
+        }
+        Trap::Exception(Exception::LoadFault) => {
+            log::info!("[kernel] InstructionFault in application, kernel killed it.");
+            run_next_task();
         }
         _ => {
-            panic!("Unsupported trap {:?}, stval = {:#x}!", trap, stval);
+            log::error!("Unsupported trap {:?}, stval = {:#x}!", trap, stval);
+            shutdown(true);
         }
     }
 

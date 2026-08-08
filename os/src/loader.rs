@@ -8,11 +8,17 @@ pub fn get_base_i(app_id: usize) -> usize {
     APP_BASE_ADDRESS + app_id * APP_SIZE_LIMIT
 }
 
-pub fn load_apps() {
-    unsafe extern "C" {
-        safe fn _num_app();
-    }
+unsafe extern "C" {
+    safe fn _num_app();
+}
 
+#[inline]
+pub fn get_num_app() -> usize {
+    let num_app_ptr = linker_symbol_addr!(_num_app) as *const usize;
+    unsafe { num_app_ptr.read_volatile() }
+}
+
+pub fn load_apps() {
     let num_app_ptr = linker_symbol_addr!(_num_app) as *const usize;
     let num_app = unsafe { num_app_ptr.read_volatile() };
     let app_start = unsafe { core::slice::from_raw_parts(num_app_ptr.add(1), num_app + 1) };

@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-pub unsafe fn print_stack_trace() -> () {
+pub unsafe fn print_stack_trace() {
     let mut fp: *const usize;
     unsafe {
         asm!("mv {}, fp", out(reg) fp);
