@@ -1,7 +1,13 @@
 .altmacro
+.option push
+.option arch, +d
 
 .macro SAVE_GP n
     sd x\n, \n*8(sp)
+.endm
+
+.macro SAVE_FP n
+    fsd f\n, (34+\n)*8(sp)
 .endm
 
 .align 2
@@ -9,7 +15,7 @@ __alltraps:
     csrrw sp, sscratch, sp
     # now sp->kernel stack, sscratch->user stack
     # allocate a TrapContext on kernel stack
-    addi sp, sp, -34*8
+    addi sp, sp, -68*8
     # save general-purpose registers
     sd x1, 1*8(sp)
     # skip sp(x2), we will save it later
@@ -29,12 +35,24 @@ __alltraps:
     # read user stack from sscratch and save it on the kernel stack
     csrr t2, sscratch
     sd t2, 2*8(sp)
+    # 浮点寄存器
+    .set n, 0
+    .rept 32
+        SAVE_FP %n
+        .set n, n+1
+    .endr
+    csrr t0, fcsr
+    sd t0, 66*8(sp)
     # set input argument of trap_handler(cx: &mut TrapContext)
     mv a0, sp
     call trap_handler
 
 .macro LOAD_GP n
     ld x\n, \n*8(sp)
+.endm
+
+.macro LOAD_FP n
+    fld f\n, (34+\n)*8(sp)
 .endm
 
 __restore:
@@ -48,6 +66,14 @@ __restore:
     csrw sstatus, t0
     csrw sepc, t1
     csrw sscratch, t2
+    # restore floating-point state before t0 is restored below
+    .set n, 0
+    .rept 32
+        LOAD_FP %n
+        .set n, n+1
+    .endr
+    ld t0, 66*8(sp)
+    csrw fcsr, t0
     # restore general-purpuse registers except sp/tp
     ld x1, 1*8(sp)
     ld x3, 3*8(sp)
@@ -57,7 +83,9 @@ __restore:
         .set n, n+1
     .endr
     # release TrapContext on kernel stack
-    addi sp, sp, 34*8
+    addi sp, sp, 68*8
     # now sp->kernel stack, sscratch->user stack
     csrrw sp, sscratch, sp
     sret
+
+.option pop
