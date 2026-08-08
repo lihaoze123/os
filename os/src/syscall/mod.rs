@@ -1,13 +1,12 @@
-use crate::{
-    syscall::{
-        fs::sys_write,
-        process::{sys_exit, sys_yield},
-    },
+use crate::syscall::{
+    fs::sys_write,
+    process::{sys_exit, sys_yield},
     time::sys_clock_gettime,
 };
 
 mod fs;
 mod process;
+mod time;
 
 const SYSCALL_WRITE: usize = 64;
 const SYSCALL_EXIT: usize = 93;

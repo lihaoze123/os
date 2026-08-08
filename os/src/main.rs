@@ -9,6 +9,7 @@ macro_rules! linker_symbol_addr {
 
 use core::arch::global_asm;
 
+mod config;
 mod lang_items;
 mod loader;
 mod logging;
@@ -34,6 +35,9 @@ pub fn rust_main() -> ! {
 
     trap::init();
     loader::load_apps();
+
+    trap::enable_timer_interrupt();
+    time::timer::set_next_trigger();
     task::run_first_task();
 
     unreachable!()

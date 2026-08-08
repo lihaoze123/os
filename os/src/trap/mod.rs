@@ -8,7 +8,12 @@ use riscv::{
     },
 };
 
-use crate::{sbi::shutdown, syscall::syscall, task::run_next_task};
+use crate::{
+    sbi::shutdown,
+    syscall::syscall,
+    task::{run_next_task, suspend_current_and_run_next},
+    time::timer::set_next_trigger,
+};
 
 mod context;
 pub use context::TrapContext;
@@ -24,6 +29,12 @@ pub fn init() {
             linker_symbol_addr!(__alltraps),
             TrapMode::Direct,
         ));
+    }
+}
+
+pub fn enable_timer_interrupt() {
+    unsafe {
+        riscv::register::sie::set_stimer();
     }
 }
 
@@ -61,6 +72,10 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         Trap::Exception(Exception::LoadFault) => {
             log::info!("[kernel] InstructionFault in application, kernel killed it.");
             run_next_task();
+        }
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            suspend_current_and_run_next();
         }
         _ => {
             log::error!("Unsupported trap {:?}, stval = {:#x}!", trap, stval);
