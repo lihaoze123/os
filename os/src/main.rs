@@ -9,10 +9,13 @@ macro_rules! linker_symbol_addr {
 
 use core::arch::global_asm;
 
+extern crate alloc;
+
 mod config;
 mod lang_items;
 mod loader;
 mod logging;
+mod mem;
 mod sbi;
 mod stack_trace;
 mod sync;

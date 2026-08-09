@@ -1,7 +1,9 @@
-use crate::{loader::get_base_i, task::task_manager::MAX_APP_NUM, trap::TrapContext};
-
-const USER_STACK_SIZE: usize = 4096 * 2;
-const KERNEL_STACK_SIZE: usize = 4096 * 2;
+use crate::{
+    config::{KERNEL_STACK_SIZE, USER_STACK_SIZE},
+    loader::get_base_i,
+    task::task_manager::MAX_APP_NUM,
+    trap::TrapContext,
+};
 
 #[repr(align(4096))]
 #[derive(Clone, Copy)]

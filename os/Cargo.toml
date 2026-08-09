@@ -10,6 +10,7 @@ test = false
 bench = false
 
 [dependencies]
+buddy_system_allocator = "0.6"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 log = "0.4.33"
 owo-colors = { version = "4", default-features = false }
