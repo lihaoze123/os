@@ -1,11 +1,8 @@
-const CLOCK_REALTIME: usize = 0;
-const CLOCK_MONOTONIC: usize = 1;
+use crate::{config::CLOCK_FREQ, time::timer::get_time};
 
-const CLOCK_FREQ: u64 = 10_000_000;
-const NSEC_PER_SEC: u64 = 1_000_000_000;
+pub mod timer;
 
-const EFAULT: isize = 14;
-const EINVAL: isize = 22;
+const NSEC_PER_SEC: usize = 1_000_000_000;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -14,8 +11,8 @@ pub struct Timespec {
     pub tv_nsec: i64,
 }
 
-fn monotonic_now() -> Timespec {
-    let ticks = riscv::register::time::read64();
+pub fn monotonic_now() -> Timespec {
+    let ticks = get_time();
 
     let seconds = ticks / CLOCK_FREQ;
     let remaining_ticks = ticks % CLOCK_FREQ;
@@ -25,23 +22,4 @@ fn monotonic_now() -> Timespec {
         tv_sec: seconds as i64,
         tv_nsec: nanoseconds as i64,
     }
-}
-
-pub fn sys_clock_gettime(clk_id: usize, tp_addr: usize) -> isize {
-    if tp_addr == 0 {
-        return -EFAULT;
-    }
-
-    let time = match clk_id {
-        CLOCK_MONOTONIC => monotonic_now(),
-        CLOCK_REALTIME => return -EINVAL,
-        _ => return -EINVAL,
-    };
-
-    let tp = tp_addr as *mut Timespec;
-    unsafe {
-        tp.write_unaligned(time);
-    }
-
-    0
 }
