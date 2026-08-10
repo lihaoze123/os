@@ -9,10 +9,17 @@ macro_rules! linker_symbol_addr {
 
 use core::arch::global_asm;
 
+extern crate alloc;
+extern crate xmas_elf;
+
+#[macro_use]
+extern crate bitflags;
+
 mod config;
 mod lang_items;
 mod loader;
 mod logging;
+mod mem;
 mod sbi;
 mod stack_trace;
 mod sync;
@@ -34,7 +41,7 @@ pub fn rust_main() -> ! {
     log::info!("Hello from system!");
 
     trap::init();
-    loader::load_apps();
+    mem::init();
 
     trap::enable_timer_interrupt();
     time::timer::set_next_trigger();

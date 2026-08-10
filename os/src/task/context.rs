@@ -1,3 +1,5 @@
+use crate::trap::trap_return;
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct TaskContext {
@@ -7,14 +9,10 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
-    pub fn goto_restore(app_cx: usize) -> Self {
-        unsafe extern "C" {
-            unsafe fn __restore();
-        }
-
+    pub fn goto_trap_return(kernel_stack_top: usize) -> Self {
         Self {
-            ra: linker_symbol_addr!(__restore),
-            sp: app_cx,
+            ra: linker_symbol_addr!(trap_return),
+            sp: kernel_stack_top,
             s: [0; 12],
         }
     }

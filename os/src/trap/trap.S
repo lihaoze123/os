@@ -10,12 +10,13 @@
     fsd f\n, (34+\n)*8(sp)
 .endm
 
-.align 2
+    .section .text.trampoline
+    .globl __alltraps
+    .globl __restore
+    .align 2
 __alltraps:
     csrrw sp, sscratch, sp
-    # now sp->kernel stack, sscratch->user stack
-    # allocate a TrapContext on kernel stack
-    addi sp, sp, -68*8
+    # now sp->*TrapContext in user space, sscratch->user stack
     # save general-purpose registers
     sd x1, 1*8(sp)
     # skip sp(x2), we will save it later
@@ -32,9 +33,6 @@ __alltraps:
     csrr t1, sepc
     sd t0, 32*8(sp)
     sd t1, 33*8(sp)
-    # read user stack from sscratch and save it on the kernel stack
-    csrr t2, sscratch
-    sd t2, 2*8(sp)
     # 浮点寄存器
     .set n, 0
     .rept 32
@@ -43,9 +41,19 @@ __alltraps:
     .endr
     csrr t0, fcsr
     sd t0, 66*8(sp)
-    # set input argument of trap_handler(cx: &mut TrapContext)
-    mv a0, sp
-    call trap_handler
+    # read user stack from sscratch and save it on the kernel stack
+    csrr t2, sscratch
+    sd t2, 2*8(sp)
+    # load kernel_satp, kernel_sp and trap_handler
+    ld t0, 67*8(sp)
+    ld t1, 68*8(sp)
+    ld t2, 69*8(sp)
+    # switch to the kernel address space and kernel stack
+    csrw satp, t0
+    sfence.vma
+    mv sp, t1
+    # jump to trap_handler
+    jr t2
 
 .macro LOAD_GP n
     ld x\n, \n*8(sp)
@@ -56,16 +64,19 @@ __alltraps:
 .endm
 
 __restore:
-    # case1: start running app by __restore
-    # case2: back to U after handling trap
-    # sp->kernel stack(after __switch), sscratch->user stack
+    # a0: *TrapContext in user space(Constant)
+    # a1: user space token
+    # switch to user space
+    csrw satp, a1
+    sfence.vma
+    csrw sscratch, a0
+    mv sp, a0
+    # sp points to TrapContext in user space, start restoring based on it
     # restore sstatus/sepc
     ld t0, 32*8(sp)
     ld t1, 33*8(sp)
-    ld t2, 2*8(sp)
     csrw sstatus, t0
     csrw sepc, t1
-    csrw sscratch, t2
     # restore floating-point state before t0 is restored below
     .set n, 0
     .rept 32
@@ -82,10 +93,8 @@ __restore:
         LOAD_GP %n
         .set n, n+1
     .endr
-    # release TrapContext on kernel stack
-    addi sp, sp, 68*8
-    # now sp->kernel stack, sscratch->user stack
-    csrrw sp, sscratch, sp
+    # restore the user stack pointer last, while sp still points to TrapContext
+    ld sp, 2*8(sp)
     sret
 
 .option pop

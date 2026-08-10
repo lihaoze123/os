@@ -51,40 +51,42 @@ fn main() {
     println!("cargo::rustc-link-arg-bin=os=-T{}", linker_path.display());
 
     let apps = app_names(&app_dir);
-    let mut binaries = Vec::with_capacity(apps.len());
+    let mut app_elfs = Vec::with_capacity(apps.len());
     let mut bundle_hash = FNV_OFFSET;
-    let mut missing_binaries = false;
+    let mut missing_elfs = false;
 
     for app in &apps {
-        let binary_path = user_target_dir.join(format!("{app}.bin"));
-        println!("cargo::rerun-if-changed={}", binary_path.display());
+        let elf_path = user_target_dir.join(app);
+        println!("cargo::rerun-if-changed={}", elf_path.display());
         bundle_hash = update_hash(bundle_hash, app.as_bytes());
-        match fs::read(&binary_path) {
+        match fs::read(&elf_path) {
             Ok(bytes) => bundle_hash = update_hash(bundle_hash, &bytes),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 // `cargo check` (and therefore rust-analyzer) does not assemble
                 // the `.incbin` directives below. Keep emitting them so a real
                 // build still reports a missing user image instead of silently
                 // producing an unusable kernel.
-                bundle_hash = update_hash(bundle_hash, binary_path.as_os_str().as_encoded_bytes());
-                missing_binaries = true;
+                bundle_hash = update_hash(bundle_hash, elf_path.as_os_str().as_encoded_bytes());
+                missing_elfs = true;
             }
-            Err(error) => panic!(
-                "failed to read user binary '{}': {error}",
-                binary_path.display()
-            ),
+            Err(error) => panic!("failed to read user ELF '{}': {error}", elf_path.display()),
         }
-        binaries.push((app, binary_path));
+        app_elfs.push((app, elf_path));
     }
 
-    if missing_binaries {
+    if missing_elfs {
         println!(
-            "cargo::warning=user binaries are missing; `cargo check` can continue, but run `make user` before building the kernel"
+            "cargo::warning=user ELFs are missing; `cargo check` can continue, but run `make user` before building the kernel"
         );
     }
 
     let mut link_app = format!(
-        ".align 3\n.section .data\n.global _num_app\n_num_app:\n    .quad {}\n",
+        r#".align 3
+    .section .data
+    .global _num_app
+_num_app:
+    .quad {}
+"#,
         apps.len()
     );
     for index in 0..apps.len() {
@@ -94,7 +96,7 @@ fn main() {
         writeln!(link_app, "    .quad app_{last}_end").unwrap();
     }
 
-    for (index, (_, binary_path)) in binaries.iter().enumerate() {
+    for (index, (_, elf_path)) in app_elfs.iter().enumerate() {
         writeln!(
             link_app,
             r#".section .data
@@ -104,7 +106,7 @@ app_{index}_start:
     .incbin "{}"
 app_{index}_end:
 "#,
-            binary_path.display()
+            elf_path.display()
         )
         .unwrap();
     }

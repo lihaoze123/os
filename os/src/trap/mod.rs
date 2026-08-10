@@ -1,4 +1,4 @@
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 
 use riscv::{
     interrupt::{Exception, Interrupt, Trap},
@@ -9,9 +9,13 @@ use riscv::{
 };
 
 use crate::{
+    config::{TRAMPLINE, TRAP_CONTEXT},
     sbi::shutdown,
     syscall::syscall,
-    task::{run_next_task, suspend_current_and_run_next},
+    task::{
+        current_trap_cx, current_user_token, exit_current_and_run_next,
+        suspend_current_and_run_next,
+    },
     time::timer::set_next_trigger,
 };
 
@@ -22,7 +26,7 @@ global_asm!(include_str!("trap.S"));
 
 pub fn init() {
     unsafe extern "C" {
-        safe fn __alltraps();
+        unsafe fn __alltraps();
     }
     unsafe {
         stvec::write(stvec::Stvec::new(
@@ -39,7 +43,52 @@ pub fn enable_timer_interrupt() {
 }
 
 #[unsafe(no_mangle)]
-pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
+pub fn trap_from_kernel() -> ! {
+    panic!("a trap from kernel!");
+}
+
+fn set_kernel_trap_entry() {
+    unsafe {
+        stvec::write(stvec::Stvec::new(
+            linker_symbol_addr!(trap_from_kernel),
+            TrapMode::Direct,
+        ))
+    }
+}
+
+fn set_user_trap_entry() {
+    unsafe { stvec::write(stvec::Stvec::new(TRAMPLINE, TrapMode::Direct)) }
+}
+
+#[unsafe(no_mangle)]
+pub fn trap_return() -> ! {
+    set_user_trap_entry();
+    let trap_cx_ptr = TRAP_CONTEXT;
+    let user_satp = current_user_token();
+
+    unsafe extern "C" {
+        unsafe fn __alltraps();
+        unsafe fn __restore();
+    }
+
+    let restore_va = TRAMPLINE + linker_symbol_addr!(__restore) - linker_symbol_addr!(__alltraps);
+    unsafe {
+        asm!(
+            "fence.i",
+            "jr {restore_va}",
+            restore_va = in(reg) restore_va,
+            in("a0") trap_cx_ptr,
+            in("a1") user_satp,
+            options(noreturn)
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+pub fn trap_handler() -> ! {
+    set_kernel_trap_entry();
+
+    let cx = current_trap_cx();
     let scause = scause::read();
     let stval = stval::read();
 
@@ -57,21 +106,28 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
             cx.sepc += 4;
             cx.x[10] = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]) as usize;
         }
-        Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
-            log::info!("[kernel] PageFault in application, kernel killed it.");
-            run_next_task();
+        Trap::Exception(
+            fault @ (Exception::InstructionFault
+            | Exception::LoadFault
+            | Exception::StoreFault
+            | Exception::InstructionPageFault
+            | Exception::LoadPageFault
+            | Exception::StorePageFault),
+        ) => {
+            log::info!(
+                "[kernel] {:?} in application: sepc={:#x}, stval={:#x}; kernel killed it.",
+                fault,
+                cx.sepc,
+                stval
+            );
+            exit_current_and_run_next();
         }
         Trap::Exception(Exception::IllegalInstruction) => {
-            log::info!("[kernel] IllegalInstruction in application, kernel killed it.");
-            run_next_task();
-        }
-        Trap::Exception(Exception::InstructionFault) => {
-            log::info!("[kernel] InstructionFault in application, kernel killed it.");
-            run_next_task();
-        }
-        Trap::Exception(Exception::LoadFault) => {
-            log::info!("[kernel] InstructionFault in application, kernel killed it.");
-            run_next_task();
+            log::info!(
+                "[kernel] IllegalInstruction in application: sepc={:#x}; kernel killed it.",
+                cx.sepc
+            );
+            exit_current_and_run_next();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
@@ -83,5 +139,5 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         }
     }
 
-    cx
+    trap_return();
 }
