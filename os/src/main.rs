@@ -10,6 +10,10 @@ macro_rules! linker_symbol_addr {
 use core::arch::global_asm;
 
 extern crate alloc;
+extern crate xmas_elf;
+
+#[macro_use]
+extern crate bitflags;
 
 mod config;
 mod lang_items;
