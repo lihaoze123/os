@@ -41,7 +41,7 @@ pub fn rust_main() -> ! {
     log::info!("Hello from system!");
 
     trap::init();
-    loader::load_apps();
+    mem::init();
 
     trap::enable_timer_interrupt();
     time::timer::set_next_trigger();

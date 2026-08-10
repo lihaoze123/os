@@ -1,12 +1,17 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use core::arch::asm;
+use riscv::register::satp;
+
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use lazy_static::lazy_static;
 
 use crate::{
-    config::{MEMORY_END, PAGE_SIZE, USER_STACK_SIZE},
+    config::{MEMORY_END, PAGE_SIZE, TRAMPLINE, TRAP_CONTEXT, USER_STACK_SIZE},
     mem::{
-        address::{PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum},
+        address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum},
         frame_allocator::{FrameTracker, frame_alloc},
-        page_table::{PTEFlags, PageTable},
+        page_table::{PTEFlags, PageTable, PageTableEntry},
     },
+    sync::up::UPSafeCell,
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -42,6 +47,11 @@ unsafe extern "C" {
     safe fn strampoline();
 }
 
+lazy_static! {
+    pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
+        Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
+}
+
 pub struct MapArea {
     vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
@@ -56,10 +66,34 @@ pub struct MemorySet {
 }
 
 impl MemorySet {
+    pub fn activate(&self) {
+        let satp = self.page_table.token();
+        unsafe {
+            satp::write(satp::Satp::from_bits(satp));
+            asm!("sfence.vma");
+        }
+    }
+
+    fn map_trampoline(&mut self) {
+        self.page_table.map(
+            VirtAddr::from(TRAMPLINE).into(),
+            PhysAddr::from(linker_symbol_addr!(strampoline)).into(),
+            PTEFlags::R | PTEFlags::X,
+        )
+    }
+
+    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+        self.page_table.translate(vpn)
+    }
+
+    pub fn token(&self) -> usize {
+        self.page_table.token()
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
-            map_area.copy_data(&self.page_table, data);
+            map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
     }
@@ -82,7 +116,7 @@ impl MemorySet {
 
         macro_rules! map_raw {
             ($section:literal, $s:expr, $e:expr, $perm:expr) => {
-                log::info!("{} [{:#x}, {:#x})", $section, $s, $e);
+                log::info!("{} [{:#x}, {:#x})", $section, usize::from($s), usize::from($e));
                 log::info!("mapping {}", $section);
                 memory_set.push(MapArea::new($s, $e, MapType::Identical, $perm), None);
             };
@@ -92,8 +126,8 @@ impl MemorySet {
             ($section:literal, $s:ident, $e:ident, $perm:expr) => {
                 map_raw!(
                     $section,
-                    (linker_symbol_addr!($s)).into(),
-                    (linker_symbol_addr!($e)).into(),
+                    VirtAddr::from(linker_symbol_addr!($s)),
+                    VirtAddr::from(linker_symbol_addr!($e)),
                     $perm
                 );
             };
@@ -105,8 +139,8 @@ impl MemorySet {
         map!(".bss", sbss_with_stack, ebss, R | W);
         map_raw!(
             "physical memory",
-            linker_symbol_addr!(ekernel).into(),
-            MEMORY_END.into(),
+            VirtAddr::from(linker_symbol_addr!(ekernel)),
+            VirtAddr::from(MEMORY_END),
             R | W
         );
 
@@ -211,12 +245,6 @@ impl MapArea {
         }
     }
 
-    pub fn unmap(&mut self, page_table: &mut PageTable) {
-        for vpn in self.vpn_range {
-            self.unmap_one(page_table, vpn);
-        }
-    }
-
     pub fn copy_data(&mut self, page_table: &mut PageTable, data: &[u8]) {
         assert_eq!(self.map_type, MapType::Framed);
         let mut start: usize = 0;
@@ -253,15 +281,5 @@ impl MapArea {
 
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
         page_table.map(vpn, ppn, pte_flags);
-    }
-
-    pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
-        match self.map_type {
-            MapType::Framed => {
-                self.data_frames.remove(&vpn);
-            }
-            _ => {}
-        }
-        page_table.unmap(vpn);
     }
 }

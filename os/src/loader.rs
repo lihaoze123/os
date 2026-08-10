@@ -1,13 +1,3 @@
-use core::arch::asm;
-
-pub const APP_BASE_ADDRESS: usize = 0x80400000;
-pub const APP_SIZE_LIMIT: usize = 0x20000;
-
-#[inline]
-pub fn get_base_i(app_id: usize) -> usize {
-    APP_BASE_ADDRESS + app_id * APP_SIZE_LIMIT
-}
-
 unsafe extern "C" {
     safe fn _num_app();
 }

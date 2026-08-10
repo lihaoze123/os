@@ -69,10 +69,7 @@ fn main() {
                 bundle_hash = update_hash(bundle_hash, elf_path.as_os_str().as_encoded_bytes());
                 missing_elfs = true;
             }
-            Err(error) => panic!(
-                "failed to read user ELF '{}': {error}",
-                elf_path.display()
-            ),
+            Err(error) => panic!("failed to read user ELF '{}': {error}", elf_path.display()),
         }
         app_elfs.push((app, elf_path));
     }
@@ -84,7 +81,12 @@ fn main() {
     }
 
     let mut link_app = format!(
-        ".align 3\n.section .data\n.global _num_app\n_num_app:\n    .quad {}\n",
+        r#".align 3
+    .section .data
+    .global _num_app
+_num_app:
+    .quad {}
+"#,
         apps.len()
     );
     for index in 0..apps.len() {

@@ -1,11 +1,12 @@
+use alloc::vec::Vec;
+
 use crate::{
-    loader::get_num_app,
+    loader::{get_app_data, get_num_app},
     sbi::shutdown,
     sync::up::UPSafeCell,
-    task::{TaskControlBlock, TaskStatus, context::TaskContext, init_app_cx, switch::__switch},
+    task::{TaskControlBlock, TaskStatus, context::TaskContext, switch::__switch},
+    trap::TrapContext,
 };
-
-pub(super) const MAX_APP_NUM: usize = 16;
 
 pub struct TaskManager {
     num_app: usize,
@@ -20,6 +21,18 @@ impl TaskManager {
         (current + 1..current + self.num_app + 1)
             .map(|id| id % self.num_app)
             .find(|&id| inner.tasks[id].task_status == TaskStatus::Ready)
+    }
+
+    pub fn get_current_token(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_task;
+        inner.tasks[current].get_user_token()
+    }
+
+    pub fn get_current_trap_cx(&self) -> &mut TrapContext {
+        let inner = self.inner.borrow();
+        let current = inner.current_task;
+        inner.tasks[current].get_trap_cx()
     }
 
     pub fn run_first_task(&self) {
@@ -76,24 +89,24 @@ impl TaskManager {
 }
 
 pub(super) struct TaskManagerInner {
-    tasks: [TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,
     current_task: usize,
 }
 
 lazy_static::lazy_static! {
     pub(super) static ref TASK_MANAGER: TaskManager = {
+        log::info!("init TASK_MANAGER");
+
         let num_app = get_num_app();
-        let mut tasks = [
-            TaskControlBlock {
-                task_cx: TaskContext::default(),
-                task_status: TaskStatus::UnInit,
-            };
-            MAX_APP_NUM
-        ];
-        tasks.iter_mut().enumerate().for_each(|(i, task)| {
-            task.task_cx = TaskContext::goto_restore(init_app_cx(i));
-            task.task_status = TaskStatus::Ready;
-        });
+        log::info!("num_app = {}", num_app);
+
+        let mut tasks: Vec<TaskControlBlock> = Vec::with_capacity(num_app);
+        for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(
+                get_app_data(i),
+                i,
+            ));
+        }
 
         TaskManager {
             num_app,

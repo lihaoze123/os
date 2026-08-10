@@ -9,3 +9,12 @@ pub const PAGE_SIZE: usize = 0x1000;
 pub const PAGE_SIZE_BITS: usize = 0xc;
 
 pub const MEMORY_END: usize = 0x8080_0000;
+
+pub const TRAMPLINE: usize = usize::MAX - PAGE_SIZE + 1;
+pub const TRAP_CONTEXT: usize = TRAMPLINE - PAGE_SIZE;
+
+pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
+    let top = TRAMPLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
+    let bottom = top - KERNEL_STACK_SIZE;
+    (bottom, top)
+}
